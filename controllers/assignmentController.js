@@ -1,86 +1,57 @@
 const { Op } = require('sequelize');
-const { Assignment, User } = require('../models');
+const Assignment = require('../models/Assignment');
+const User = require('../models/User'); // модель пользователей проекта
 
-// Создание задания (POST /api/assignments)
-const createAssignment = async (req, res) => {
+// 1. Получение списка студентов для формы выдачи заданий
+exports.getStudents = async (req, res) => {
   try {
-    const { title, description, studentId, grade } = req.body;
-    
-    // teacherId берется из токена (req.user.id)
-    const assignment = await Assignment.create({
-      title,
-      description,
-      studentId,
-      grade: grade || null,
-      teacherId: req.user.id
+    const students = await User.findAll({
+      where: { role: 'user' },
+      attributes: ['id', 'email']
     });
-    
-    res.status(201).json(assignment);
+    return res.status(200).json(students);
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка при создании задания' });
+    console.error('Ошибка получения списка студентов:', error);
+    return res.status(500).json({ error: 'Ошибка сервера при получении студентов' });
   }
 };
 
-// Получение списка с учетом роли + фильтрация/поиск (GET /api/assignments)
-const getAssignments = async (req, res) => {
+// 2. Получение списка заданий (с фильтрацией и разграничением прав)
+exports.getAssignments = async (req, res) => {
   try {
-    let filter = {};
-    
-    // Ролевое разграничение
+    const { status, search, studentId } = req.query;
+    const whereClause = {};
+
+    // Если запрос делает обычный студент — он видит ТОЛЬКО свои задания
     if (req.user.role === 'user') {
-      filter.studentId = req.user.id;
-    } else if (req.user.role === 'moderator') {
-      filter.teacherId = req.user.id;
+      whereClause.studentId = req.user.id;
+    } else if (studentId) {
+      // Преподаватель/админ может отфильтровать по конкретному студенту
+      whereClause.studentId = studentId;
     }
 
-    // Дополнительный эндпоинт: фильтрация по статусу (?status=Выдано)
-    if (req.query.status) {
-      filter.status = req.query.status;
+    if (status) {
+      whereClause.status = status;
     }
 
-    // Дополнительный эндпоинт: поиск по ключевым словам в названии (?search=Лаб)
-    if (req.query.search) {
-      filter.title = { [Op.iLike]: `%${req.query.search}%` };
+    if (search) {
+      whereClause.title = { [Op.iLike || Op.like]: `%${search}%` };
     }
 
-    const assignments = await Assignment.findAll({ 
-      where: filter,
-      order: [['id', 'ASC']]
+    const assignments = await Assignment.findAll({
+      where: whereClause,
+      order: [['createdAt', 'DESC']]
     });
-    res.json(assignments);
+
+    return res.status(200).json(assignments);
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка при получении заданий' });
+    console.error('Ошибка получения заданий:', error);
+    return res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
-// Получение деталей задания по ID (GET /api/assignments/:id)
-const getAssignmentById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const assignment = await Assignment.findByPk(id, {
-      include: [
-        { model: User, as: 'student', attributes: ['id', 'email', 'role'] },
-        { model: User, as: 'teacher', attributes: ['id', 'email', 'role'] }
-      ]
-    });
-
-    if (!assignment) {
-      return res.status(404).json({ error: 'Задание не найдено' });
-    }
-
-    // Студент может просматривать только свое задание
-    if (req.user.role === 'user' && assignment.studentId !== req.user.id) {
-      return res.status(403).json({ error: 'Нет доступа к этому заданию' });
-    }
-
-    res.json(assignment);
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка при получении задания' });
-  }
-};
-
-// Обновление задания (PUT /api/assignments/:id)
-const updateAssignment = async (req, res) => {
+// 3. Получение одного задания по ID
+exports.getAssignmentById = async (req, res) => {
   try {
     const { id } = req.params;
     const assignment = await Assignment.findByPk(id);
@@ -89,43 +60,154 @@ const updateAssignment = async (req, res) => {
       return res.status(404).json({ error: 'Задание не найдено' });
     }
 
-    // Проверка прав: преподаватель, выдавший задание, или admin
-    if (req.user.role !== 'admin' && assignment.teacherId !== req.user.id) {
-      // Разрешаем студенту только менять статус на "Сдано"
-      if (req.user.role === 'user' && assignment.studentId === req.user.id && req.body.status === 'Сдано') {
-        await assignment.update({ status: 'Сдано' });
-        return res.json(assignment);
-      }
-      return res.status(403).json({ error: 'Недостаточно прав для изменения задания' });
+    // Студент не может смотреть чужие задания
+    if (req.user.role === 'user' && assignment.studentId !== req.user.id) {
+      return res.status(403).json({ error: 'Нет доступа к чужому заданию' });
     }
 
-    await assignment.update(req.body);
-    res.json(assignment);
+    return res.status(200).json(assignment);
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка при обновлении задания' });
+    return res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
-// Удаление задания (DELETE /api/assignments/:id)
-const deleteAssignment = async (req, res) => {
+// 4. Создание заданий (включая массовую раздачу и материалы от преподавателя)
+exports.createAssignment = async (req, res) => {
+  try {
+    const { title, description } = req.body;
+    let { studentIds, studentId } = req.body;
+
+    // Поддержка как массива studentIds, так и одиночного studentId
+    let targetStudents = [];
+    if (studentIds) {
+      if (typeof studentIds === 'string') {
+        try {
+          targetStudents = JSON.parse(studentIds);
+        } catch {
+          targetStudents = studentIds.split(',').map(id => id.trim());
+        }
+      } else if (Array.isArray(studentIds)) {
+        targetStudents = studentIds;
+      }
+    } else if (studentId) {
+      targetStudents = [studentId];
+    }
+
+    if (!targetStudents || targetStudents.length === 0) {
+      return res.status(400).json({ error: 'Укажите хотя бы одного студента (studentIds)' });
+    }
+
+    // Обработка загруженных преподавателем файлов материалов
+    const materials = (req.files || []).map(file => ({
+      name: file.originalname,
+      url: `/uploads/${file.filename}`,
+      size: file.size,
+      uploadedAt: new Date()
+    }));
+
+    // Создаем копию задания для каждого выбранного студента
+    const createdAssignments = [];
+    for (const sId of targetStudents) {
+      const assignment = await Assignment.create({
+        title,
+        description,
+        status: 'Выдано',
+        materials,
+        submissions: [],
+        feedback: null,
+        grade: null,
+        studentId: Number(sId),
+        teacherId: req.user.id
+      });
+      createdAssignments.push(assignment);
+    }
+
+    return res.status(201).json(
+      createdAssignments.length === 1 ? createdAssignments[0] : createdAssignments
+    );
+  } catch (error) {
+    console.error('Ошибка создания задания:', error);
+    return res.status(500).json({ error: 'Ошибка сервера при создании задания' });
+  }
+};
+
+// 5. Сдача задания студентом (прикрепление решений)
+exports.submitSolution = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Assignment.destroy({ where: { id } });
-    
-    if (!deleted) {
+    const assignment = await Assignment.findByPk(id);
+
+    if (!assignment) {
       return res.status(404).json({ error: 'Задание не найдено' });
     }
-    
-    res.json({ message: 'Задание успешно удалено' });
+
+    // Проверяем, что сдает именно тот студент, которому назначено
+    if (req.user.role === 'user' && assignment.studentId !== req.user.id) {
+      return res.status(403).json({ error: 'Вы не можете отправлять решение за другого студента' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Прикрепите хотя бы один файл решения' });
+    }
+
+    const newSubmissions = req.files.map(file => ({
+      name: file.originalname,
+      url: `/uploads/${file.filename}`,
+      size: file.size,
+      uploadedAt: new Date()
+    }));
+
+    // Сохраняем историю: объединяем старые файлы с новыми
+    const currentSubmissions = Array.isArray(assignment.submissions) ? assignment.submissions : [];
+    assignment.submissions = [...currentSubmissions, ...newSubmissions];
+    assignment.status = 'Сдано';
+
+    await assignment.save();
+    return res.status(200).json(assignment);
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка при удалении задания' });
+    console.error('Ошибка отправки решения:', error);
+    return res.status(500).json({ error: 'Ошибка сервера при отправке решения' });
   }
 };
 
-module.exports = { 
-  createAssignment, 
-  getAssignments, 
-  getAssignmentById, 
-  updateAssignment, 
-  deleteAssignment 
+// 6. Оценивание и комментарий преподавателя (или обновление)
+exports.updateAssignment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { grade, feedback, status, title, description } = req.body;
+
+    const assignment = await Assignment.findByPk(id);
+    if (!assignment) {
+      return res.status(404).json({ error: 'Задание не найдено' });
+    }
+
+    if (grade !== undefined) assignment.grade = grade;
+    if (feedback !== undefined) assignment.feedback = feedback;
+    if (status !== undefined) assignment.status = status;
+    if (title !== undefined) assignment.title = title;
+    if (description !== undefined) assignment.description = description;
+
+    await assignment.save();
+    return res.status(200).json(assignment);
+  } catch (error) {
+    console.error('Ошибка обновления:', error);
+    return res.status(500).json({ error: 'Ошибка сервера при обновлении' });
+  }
+};
+
+// 7. Удаление задания (администратор)
+exports.deleteAssignment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const assignment = await Assignment.findByPk(id);
+
+    if (!assignment) {
+      return res.status(404).json({ error: 'Задание не найдено' });
+    }
+
+    await assignment.destroy();
+    return res.status(200).json({ message: 'Задание успешно удалено' });
+  } catch (error) {
+    return res.status(500).json({ error: 'Ошибка сервера при удалении' });
+  }
 };

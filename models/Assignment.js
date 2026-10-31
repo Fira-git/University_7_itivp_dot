@@ -2,17 +2,53 @@ const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/db');
 
 const Assignment = sequelize.define('Assignment', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  title: { type: DataTypes.STRING, allowNull: false },
-  description: { type: DataTypes.TEXT, allowNull: false },
-  status: { 
-    type: DataTypes.ENUM('Выдано', 'Сдано'), 
-    defaultValue: 'Выдано' 
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
   },
-  grade: { type: DataTypes.INTEGER, allowNull: true },
-  // identifiers for relationships
-  studentId: { type: DataTypes.INTEGER, allowNull: false },
-  teacherId: { type: DataTypes.INTEGER, allowNull: false }
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  status: {
+    type: DataTypes.ENUM('Выдано', 'Сдано'),
+    defaultValue: 'Выдано'
+  },
+  grade: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  // Файлы материалов от преподавателя (условия, методички)
+  materials: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
+  // Файлы решений от студента
+  submissions: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
+  // Рецензия / комментарий преподавателя к работе
+  feedback: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  studentId: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  teacherId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  }
+}, {
+  tableName: 'Assignments',
+  timestamps: true
 });
 
 module.exports = Assignment;
