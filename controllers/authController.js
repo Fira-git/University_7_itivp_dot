@@ -54,11 +54,11 @@ const login = async (req, res) => {
     user.lockUntil = null;
     await user.save();
 
-    // generate access token (JWT)
+   // generate access token (JWT)
     const token = jwt.sign(
       { id: user.id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '15m' }
+      { expiresIn: '24h' }
     );
 
     res.json({ message: 'Успешный вход', token });

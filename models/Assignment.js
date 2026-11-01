@@ -16,13 +16,17 @@ const Assignment = sequelize.define('Assignment', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('Выдано', 'Сдано'),
+    type: DataTypes.ENUM('Выдано', 'Отправлено на оценку', 'Оценено'),
     defaultValue: 'Выдано'
   },
-  grade: {
-    type: DataTypes.INTEGER,
-    allowNull: true
-  },
+ grade: {
+  type: DataTypes.INTEGER,
+  allowNull: true,
+  validate: {
+    min: 0,
+    max: 100
+  }
+},
   // Файлы материалов от преподавателя (условия, методички)
   materials: {
     type: DataTypes.JSONB,

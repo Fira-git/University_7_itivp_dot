@@ -30,7 +30,7 @@ const assignmentCreateSchema = Joi.object({
   studentId: Joi.number().integer().required().messages({
     'any.required': 'Идентификатор студента обязателен'
   }),
-  status: Joi.string().valid('Выдано', 'Сдано').optional(),
+  status: Joi.string().valid('Выдано', 'Отправлено на оценку', 'Оценено').optional(),
   grade: Joi.number().integer().min(0).max(100).optional()
 });
 
@@ -38,7 +38,7 @@ const assignmentCreateSchema = Joi.object({
 const assignmentUpdateSchema = Joi.object({
   title: Joi.string().min(3).max(150).optional(),
   description: Joi.string().min(5).optional(),
-  status: Joi.string().valid('Выдано', 'Сдано').optional(),
+  status: Joi.string().valid('Выдано', 'Отправлено на оценку', 'Оценено').optional(),
   grade: Joi.number().integer().min(0).max(100).optional()
 });
 

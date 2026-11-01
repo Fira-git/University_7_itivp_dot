@@ -124,9 +124,20 @@ app.use((err, req, res, next) => {
 });
 
 // Запуск сервера и синхронизация структуры таблиц
+// Запуск сервера и синхронизация структуры таблиц
 const startServer = async () => {
   try {
     await connectDB();
+
+    // Принудительно регистрируем новые статусы в ENUM базы данных PostgreSQL
+    try {
+      await sequelize.query('ALTER TYPE "enum_Assignments_status" ADD VALUE IF NOT EXISTS \'Отправлено на оценку\';');
+      await sequelize.query('ALTER TYPE "enum_Assignments_status" ADD VALUE IF NOT EXISTS \'Оценено\';');
+      console.log('Статусы ENUM в базе данных успешно обновлены.');
+    } catch (enumErr) {
+      // Игнорируем, если значения уже присутствуют
+    }
+
     await sequelize.sync({ alter: true }); 
     console.log('Таблицы успешно синхронизированы с базой данных.');
     

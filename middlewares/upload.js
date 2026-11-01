@@ -2,28 +2,38 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Создаём папку uploads в корне проекта, если её ещё нет
-const uploadDir = path.join(__dirname, '../uploads');
+const uploadDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
-  filename: function (req, file, cb) {
-    // Сохраняем имя с таймстемпом, чтобы файлы не перезаписывали друг друга
+  filename: (req, file, cb) => {
+    // Безопасное уникальное имя файла на диске
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
-    // Очищаем имя от спецсимволов для безопасности
-    const baseName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9а-яА-ЯёЁ_-]/g, '_');
-    cb(null, `${baseName}-${uniqueSuffix}${ext}`);
+    cb(null, `${uniqueSuffix}${ext}`);
   }
 });
 
-const upload = multer({
-  storage: storage,
+// Белый список допустимых расширений
+const allowedExtensions = /pdf|docx|doc|zip|txt/;
+
+const fileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+  if (allowedExtensions.test(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error(`Недопустимый формат файла .${ext}. Разрешены только: PDF, DOC, DOCX, ZIP, TXT`), false);
+  }
+};
+
+const upload = multer({ 
+  storage,
+  fileFilter,
   limits: { fileSize: 30 * 1024 * 1024 } // ограничение 30 МБ на файл
 });
 

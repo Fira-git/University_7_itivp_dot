@@ -1,0 +1,41 @@
+# Зависимости
+node_modules/
+
+# Сборка и кэш (Vite / React)
+dist/
+dist-ssr/
+.vite/
+.vite-temp/
+*.local
+
+# Логи
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Переменные окружения (секреты)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Пользовательские загрузки и служебные файлы проекта
+uploads/*
+!uploads/.gitkeep
+all_code.txt
+
+# Настройки IDE и операционной системы
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
