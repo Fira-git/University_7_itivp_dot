@@ -1,0 +1,48 @@
+name: CI/CD Pipeline
+
+'on':
+  push:
+    branches:
+      - main
+      - master
+      - kr22
+      - ipr22
+      - dev
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # 1. Проверка зависимостей бэкенда
+      - name: Install Backend Dependencies
+        run: npm ci
+
+      # 2. Проверка и сборка фронтенда
+      - name: Install Frontend Dependencies
+        working-directory: ./client
+        run: npm ci
+
+      - name: Build Frontend Application
+        working-directory: ./client
+        run: npm run build
+        env:
+          VITE_API_URL: https://assignments-api.onrender.com
+
+      # 3. Фиксация результата
+      - name: Pipeline Status
+        run: echo "Сборка и проверка успешно пройдены!"
