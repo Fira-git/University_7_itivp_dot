@@ -1,0 +1,61 @@
+name: CI/CD Pipeline
+
+'on':
+  push:
+    branches:
+      - main
+      - master
+      - ipr22
+      - kr22
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # 1. Проверка бэкенда
+      - name: Install Backend Dependencies
+        run: npm ci
+
+      # 2. Проверка и сборка фронтенда
+      - name: Install Frontend Dependencies
+        working-directory: ./client
+        run: npm ci
+
+      - name: Build Frontend Application
+        working-directory: ./client
+        run: npm run build
+        env:
+          VITE_API_URL: https://assignments-api.onrender.com
+
+      # 3. Отправка уведомления в Telegram при успехе
+      - name: Notify Telegram on Success
+        if: success()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "parse_mode=HTML" \
+            -d "text=✅ <b>CI/CD: Сборка успешна!</b>%0AРепозиторий: <code>${{ github.repository }}</code>%0AВетка: <code>${{ github.ref_name }}</code>%0AКоммит: <i>${{ github.event.head_commit.message }}</i>"
+
+      # 4. Отправка уведомления в Telegram при падении
+      - name: Notify Telegram on Failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "parse_mode=HTML" \
+            -d "text=❌ <b>CI/CD: Сборка упала!</b>%0AРепозиторий: <code>${{ github.repository }}</code>%0AВетка: <code>${{ github.ref_name }}</code>%0AПроверьте логи в GitHub Actions."
