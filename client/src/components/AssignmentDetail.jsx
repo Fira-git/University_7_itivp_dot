@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -17,21 +18,65 @@ import api, { API_BASE_URL } from '../api';
 import { formatFileName } from '../utils/format';
 
 export default function AssignmentDetail({ 
-  assignment, 
-  userRole, 
+  assignment: initialAssignment, 
+  user: initialUser,
+  userRole: initialUserRole, 
   onBack, 
   onRefresh 
 }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [assignment, setAssignment] = useState(initialAssignment || null);
+  const [loading, setLoading] = useState(!initialAssignment);
+  
+  // Определяем роль: либо из объекта user, либо из пропса userRole
+  const user = initialUser || JSON.parse(localStorage.getItem('user') || '{}');
+  const userRole = initialUserRole || user?.role;
+
   const [solutionFiles, setSolutionFiles] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [gradeValue, setGradeValue] = useState(
-    assignment.grade !== null && assignment.grade !== undefined ? assignment.grade : ''
-  );
-  const [feedbackText, setFeedbackText] = useState(assignment.feedback || '');
+  const [gradeValue, setGradeValue] = useState('');
+  const [feedbackText, setFeedbackText] = useState('');
   const [isGrading, setIsGrading] = useState(false);
 
-  const hasGrade = assignment.grade !== null && assignment.grade !== undefined;
+  const fetchAssignment = async () => {
+    try {
+      setLoading(true);
+      const targetId = id || initialAssignment?.id;
+      if (!targetId) return;
+      const res = await api.get(`/assignments/${targetId}`);
+      setAssignment(res.data);
+      setGradeValue(res.data.grade !== null && res.data.grade !== undefined ? res.data.grade : '');
+      setFeedbackText(res.data.feedback || '');
+    } catch (err) {
+      console.error(err);
+      alert('Не удалось загрузить задание');
+      navigate('/');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!initialAssignment && id) {
+      fetchAssignment();
+    } else if (initialAssignment) {
+      setAssignment(initialAssignment);
+      setGradeValue(initialAssignment.grade !== null && initialAssignment.grade !== undefined ? initialAssignment.grade : '');
+      setFeedbackText(initialAssignment.feedback || '');
+    }
+  }, [id, initialAssignment]);
+
+  const handleRefresh = async () => {
+    if (onRefresh) {
+      await onRefresh();
+    }
+    await fetchAssignment();
+  };
+
+  const hasGrade = assignment?.grade !== null && assignment?.grade !== undefined;
+
 
   const handleSubmitSolution = async (e) => {
     e.preventDefault();
@@ -51,8 +96,9 @@ export default function AssignmentDetail({
       await api.post(`/assignments/${assignment.id}/submit`, formData);
 
       setSolutionFiles([]);
-      await onRefresh();
+      await handleRefresh();
       alert('Работа успешно отправлена на оценку!');
+
     } catch (err) {
       console.error(err);
       const serverMessage = err.response?.data?.error || 'Ошибка при отправке работы';
@@ -66,12 +112,13 @@ export default function AssignmentDetail({
     e.preventDefault();
     setIsGrading(true);
     try {
-      await api.put(`/assignments/${assignment.id}`, {
+            await api.put(`/assignments/${assignment.id}`, {
         grade: Number(gradeValue),
         feedback: feedbackText
       });
-      await onRefresh();
+      await handleRefresh();
       alert('Оценка и рецензия сохранены!');
+
     } catch (err) {
       console.error(err);
       alert('Ошибка при сохранении оценки');
@@ -105,15 +152,24 @@ export default function AssignmentDetail({
     );
   };
 
+    if (loading) {
+    return <div className="py-20 text-center text-slate-400 text-sm">Загрузка данных задания...</div>;
+  }
+
+  if (!assignment) {
+    return <div className="py-20 text-center text-slate-400 text-sm">Задание не найдено</div>;
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fadeIn">
       <button
-        onClick={onBack}
+        onClick={() => onBack ? onBack() : navigate(-1)}
         className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 shadow-sm transition-all mb-6"
       >
         <ArrowLeft className="w-4 h-4" />
         Назад ко всем заданиям
       </button>
+
 
       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-sm mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">

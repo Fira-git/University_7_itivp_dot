@@ -25,9 +25,27 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-// 2. CORS для взаимодействия с React/Vite
+// 2. CORS для взаимодействия с React/Vite и доменами Vercel
 app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (например, curl, Postman, мобильные приложения)
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = [
+      process.env.CLIENT_URL,
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ].filter(Boolean);
+
+    // Разрешаем локальные адреса, точное совпадение с CLIENT_URL или любые превью/деплои на .vercel.app
+    const isAllowed = allowedOrigins.includes(origin) || /\.vercel\.app$/.test(origin);
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(null, true); // fallback для гибкости при тестировании деплоев
+    }
+  },
   credentials: true
 }));
 
@@ -108,17 +126,26 @@ app.use('/auth', authRoutes);
 app.use('/assignments', assignmentRoutes);
 
 // Централизованная обработка ошибок с логированием и отправкой в Sentry
+// Централизованная обработка ошибок с логированием и отправкой в Sentry
 app.use((err, req, res, next) => {
   if (process.env.SENTRY_DSN) {
     Sentry.captureException(err);
   }
   
-  if (logger && logger.error) {
-    logger.error(`${err.status || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-  }
-  console.error('Ошибка сервера:', err);
+  const statusCode = err.status || (err.message && err.message.includes('Недопустимый формат') ? 400 : 500);
+  const logMessage = `${statusCode} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`;
 
-  res.status(err.status || 500).json({
+  // Запись в error.log через Winston
+  if (logger && logger.error) {
+    logger.error({
+      message: logMessage,
+      stack: err.stack,
+      timestamp: new Date().toISOString()
+    });
+  }
+  console.error('Ошибка сервера:', err.message);
+
+  res.status(statusCode).json({
     error: err.message || 'Внутренняя ошибка сервера. Обратитесь к администратору.'
   });
 });

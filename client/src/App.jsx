@@ -1,9 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Auth from './components/Auth';
-import TeacherDashboard from './components/TeacherDashboard';
-import StudentDashboard from './components/StudentDashboard';
 import api from './api';
+
+// Прием 2: Code splitting (React.lazy + Suspense)
+const Auth = lazy(() => import('./components/Auth'));
+const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
+const StudentDashboard = lazy(() => import('./components/StudentDashboard'));
+const AssignmentDetail = lazy(() => import('./components/AssignmentDetail'));
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -12,11 +16,8 @@ export default function App() {
   useEffect(() => {
     const verifySession = async () => {
       const savedToken = localStorage.getItem('token');
-      const savedUser = localStorage.getItem('user');
-
-      if (savedToken && savedUser) {
+      if (savedToken) {
         try {
-          // Проверяем токен на реальном бэкенде
           const res = await api.get('/auth/me');
           setUser(res.data);
           localStorage.setItem('user', JSON.stringify(res.data));
@@ -52,18 +53,40 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <Navbar user={user} onLogout={handleLogout} />
+    <BrowserRouter>
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Navbar user={user} onLogout={handleLogout} />
 
-      <main className="flex-1">
-        {!user ? (
-          <Auth onLoginSuccess={handleLoginSuccess} />
-        ) : user.role === 'moderator' || user.role === 'admin' ? (
-          <TeacherDashboard />
-        ) : (
-          <StudentDashboard />
-        )}
-      </main>
-    </div>
+        <main className="flex-1">
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-20 text-slate-400 text-sm">
+              Загрузка...
+            </div>
+          }>
+            <Routes>
+              <Route 
+                path="/auth" 
+                element={!user ? <Auth onLoginSuccess={handleLoginSuccess} /> : <Navigate to="/" />} 
+              />
+              <Route 
+                path="/" 
+                element={
+                  user ? (
+                    user.role === 'moderator' || user.role === 'admin' 
+                      ? <TeacherDashboard /> 
+                      : <StudentDashboard />
+                  ) : <Navigate to="/auth" />
+                } 
+              />
+              <Route 
+                path="/assignments/:id" 
+                element={user ? <AssignmentDetail user={user} /> : <Navigate to="/auth" />} 
+              />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
+        </main>
+      </div>
+    </BrowserRouter>
   );
 }

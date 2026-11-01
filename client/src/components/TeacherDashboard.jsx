@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useDebounce } from '../utils/useDebounce';
 import { 
   Plus, 
   FileText, 
@@ -19,15 +21,17 @@ import {
   EyeOff
 } from 'lucide-react';
 import api from '../api';
-import AssignmentDetail from './AssignmentDetail';
 
 export default function TeacherDashboard() {
+  const navigate = useNavigate();
   const [assignments, setAssignments] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeAssignment, setActiveAssignment] = useState(null);
+
+  // Прием 1: Debounce поиска
+  const debouncedSearch = useDebounce(searchQuery, 400);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [previewMarkdown, setPreviewMarkdown] = useState(false);
@@ -46,11 +50,6 @@ export default function TeacherDashboard() {
       ]);
       setAssignments(assignmentsRes.data);
       setStudents(studentsRes.data);
-
-      if (activeAssignment) {
-        const updated = assignmentsRes.data.find(a => a.id === activeAssignment.id);
-        if (updated) setActiveAssignment(updated);
-      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -61,17 +60,6 @@ export default function TeacherDashboard() {
   useEffect(() => {
     fetchData();
   }, []);
-
-  if (activeAssignment) {
-    return (
-      <AssignmentDetail
-        assignment={activeAssignment}
-        userRole="moderator"
-        onBack={() => setActiveAssignment(null)}
-        onRefresh={fetchData}
-      />
-    );
-  }
 
   const toggleStudentSelection = (id) => {
     setSelectedStudentIds(prev => 
@@ -121,11 +109,14 @@ export default function TeacherDashboard() {
     }
   };
 
-  const filteredAssignments = assignments.filter(item => {
-    const matchesStatus = filterStatus === 'ALL' || item.status === filterStatus;
-    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
-  });
+  // Прием 3: useMemo для фильтрации заданий
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter(item => {
+      const matchesStatus = filterStatus === 'ALL' || item.status === filterStatus;
+      const matchesSearch = item.title.toLowerCase().includes(debouncedSearch.toLowerCase());
+      return matchesStatus && matchesSearch;
+    });
+  }, [assignments, filterStatus, debouncedSearch]);
 
   const renderStatusBadge = (status) => {
     if (status === 'Оценено') {
@@ -217,9 +208,9 @@ export default function TeacherDashboard() {
             const hasGrade = assignment.grade !== null && assignment.grade !== undefined;
 
             return (
-              <div 
+                            <div 
                 key={assignment.id} 
-                onClick={() => setActiveAssignment(assignment)}
+                onClick={() => navigate(`/assignments/${assignment.id}`)}
                 className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-emerald-400 cursor-pointer transition-all flex flex-col justify-between group"
               >
                 <div>
