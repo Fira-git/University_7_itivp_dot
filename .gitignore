@@ -5,3 +5,5 @@ error.log
 npm-debug.log*
 .DS_Store
 Thumbs.db
+uploads/
+dist/
